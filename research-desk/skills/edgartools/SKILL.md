@@ -81,9 +81,36 @@ for marker in ["Segment Information", "revenue by geographic", "Disaggregation o
 
 Report segment/geography revenue alongside the consolidated figure and call out: any region or segment that moved more than ~20% year over year, and any customer-concentration disclosure (usually phrased "one customer accounted for X% of revenue").
 
+## Year-over-year risk-factor diff
+
+Boilerplate risk factors are noise; what changed since last year is the signal. Compare Item 1A across the two most recent 10-Ks with the standard library, so it works even if the edgartools API shifts:
+
+```python
+import difflib
+from edgar import Company
+
+company = Company("NVDA")
+this_year, last_year = list(company.get_filings(form="10-K"))[:2]   # newest first
+
+def paragraphs(filing):
+    text = str(filing.obj()["Item 1A"])
+    return [p.strip() for p in text.split("\n") if len(p.strip()) > 80]  # drop headings and blank lines
+
+old, new = paragraphs(last_year), paragraphs(this_year)
+
+# Paragraphs with no close match in the other year are the genuinely new or removed risks.
+def unmatched(source, other):
+    return [p for p in source if not difflib.get_close_matches(p, other, n=1, cutoff=0.8)]
+
+added = unmatched(new, old)       # new risks this year
+removed = unmatched(old, new)     # risks that were dropped
+print(len(added), "new,", len(removed), "removed")
+```
+
+Read the `added` paragraphs and summarize the real differences: a new risk, a risk that was reworded to be more severe, or a quantified exposure that did not appear before. If both lists are empty or trivial, say that nothing material changed rather than inventing a difference. Cite both filing dates.
+
 ## Useful patterns
 
-- **Year-over-year risk-factor diff:** pull Item 1A from this year's and last year's 10-K (`company.get_filings(form="10-K")` is sorted; take the first two) and compare.
 - **Insider activity:** `company.get_filings(form="4")` lists Form 4 insider transaction filings.
 - **Be defensive:** the API surface evolves. If an attribute or method isn't there, inspect it (`dir(obj)`, `help(obj)`) or fall back to `filing.text()` and targeted searching, and note the fallback in your output.
 - **Be polite to EDGAR:** keep requests to what you need; everything is cached within the session by the library.
